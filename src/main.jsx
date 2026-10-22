@@ -37,6 +37,7 @@ function App(){
   const [phone,setPhone] = useState('')
   const [address,setAddress] = useState('')
   const [notes,setNotes] = useState('')
+  const [paymentMethod,setPaymentMethod] = useState('upi_qr')
   const [order,setOrder] = useState(null)
   const [toast,setToast] = useState('')
   const [admin,setAdmin] = useState(false)
@@ -69,7 +70,7 @@ function App(){
     setPlacingOrder(true)
     const {data,error} = await supabase.functions.invoke('create-order',{body:{
       customer_name:name,customer_phone:phone,delivery_address:address,delivery_notes:notes,
-      delivery_fee:deliveryFee,items
+      payment_method:paymentMethod,delivery_fee:deliveryFee,items
     }})
     setPlacingOrder(false)
     if(error||data?.error){
@@ -82,9 +83,9 @@ function App(){
       address:dbOrder.delivery_address,notes:dbOrder.delivery_notes,
       items:(data.items||[]).map(i=>({id:i.product_id,name:i.product_name,unit:i.unit,price:Number(i.unit_price),qty:i.quantity,emoji:catalog.find(p=>Number(p.id)===Number(i.product_id))?.emoji||'🛒'})),
       subtotal:Number(dbOrder.subtotal),deliveryFee:Number(dbOrder.delivery_fee),total:Number(dbOrder.total),
-      status:'Order received',paymentStatus:dbOrder.payment_status,createdAt:new Date(dbOrder.created_at).toLocaleString()
+      status:'Order received',paymentMethod:dbOrder.payment_method || paymentMethod,paymentStatus:dbOrder.payment_status,createdAt:new Date(dbOrder.created_at).toLocaleString()
     }
-    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify('Order saved! Please complete your UPI payment.')
+    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify(paymentMethod==='cash_on_delivery'?'COD order placed successfully!':'Order saved! Please complete your UPI payment.')
     try { localStorage.setItem('localBasketLastOrder',JSON.stringify(newOrder)); } catch {}
   }
   const shareOrder = () => {
@@ -143,7 +144,7 @@ function App(){
           <div className="order-total"><span>Total to pay</span><b>{money(order.total)}</b></div>
           <p className="address-line"><MapPin size={15}/>{order.address}</p>
         </div>
-        {order.paymentStatus!=='paid'&&<div className="payment-panel">
+        {order.paymentMethod==='cash_on_delivery' ? <div className="payment-panel"><span className="eyebrow">CASH ON DELIVERY</span><h2>Pay when your order arrives</h2><p>Your order is confirmed as a COD request. Please pay ₹{Number(order.total).toFixed(0)} to the delivery person when your groceries arrive.</p><div className="tracking-panel"><h3><PackageCheck size={18}/> Order tracking</h3><p className="tracking-status">Order received · Cash payment due on delivery</p><div className="tracking-steps"><span className="active">Order received</span><span>Preparing</span><span>Out for delivery</span><span>Delivered</span></div><small>Delivery updates will be shown here as the store updates your order.</small></div></div> : order.paymentStatus!=='paid'&&<div className="payment-panel">
           <span className="eyebrow">PAY USING UPI QR</span>
           <h2>Scan & pay {money(order.total)}</h2>
           <p>Open any UPI app and scan this QR. Enter the exact amount shown above.</p>
@@ -172,7 +173,7 @@ function App(){
     </main>
     <footer><div className="footer-brand">🛍️ {shopName}</div><span>Made for your neighbourhood.</span><button onClick={()=>setAdmin(true)}>Owner setup</button></footer>
     {showCart&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowCart(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">YOUR BASKET</span><h2>Shopping cart ({count})</h2></div><button className="icon-button" onClick={()=>setShowCart(false)}><X/></button></div>{count===0?<div className="empty-cart"><span>🧺</span><h3>Your basket is empty</h3><p>Add something fresh to get started.</p><button className="primary-button" onClick={()=>setShowCart(false)}>Browse products</button></div>:<><div className="cart-items">{catalog.filter(p=>cart[p.id]).map(p=><div className="cart-item" key={p.id}><div className="mini-product">{p.emoji}</div><div className="cart-item-main"><b>{p.name}</b><small>{p.unit} · {money(p.price)}</small><div className="quantity"><button onClick={()=>change(p.id,-1)}><Minus size={13}/></button><b>{cart[p.id]}</b><button onClick={()=>add(p.id)}><Plus size={13}/></button></div></div><strong>{money(p.price*cart[p.id])}</strong><button className="remove-button" onClick={()=>setCart(c=>{const n={...c};delete n[p.id];return n})}><Trash2 size={15}/></button></div>)}</div><div className="cart-bottom"><div className="bill-line"><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="bill-line"><span>Delivery fee</span><b>{money(deliveryFee)}</b></div><div className="bill-line bill-total"><span>Total</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" onClick={()=>{setShowCart(false);setCheckout(true)}}>Proceed to checkout <ChevronRight size={18}/></button><small className="muted">UPI QR payment is available after order placement.</small></div></>}</aside></div>}
-    {checkout&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckout(false)}}><section className="checkout-modal"><div className="drawer-head"><div><span className="eyebrow">ALMOST THERE</span><h2>Delivery details</h2></div><button className="icon-button" onClick={()=>setCheckout(false)}><X/></button></div><form onSubmit={submitOrder}><label>Full name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Mobile number<input required inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit phone number"/></label><label>Delivery address<textarea required value={address} onChange={e=>setAddress(e.target.value)} placeholder="House, street, area, landmark"/></label><label>Delivery note (optional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any directions for delivery"/></label><div className="bill-line bill-total"><span>Pay by UPI QR after placing order</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" type="submit" disabled={placingOrder}>{placingOrder?'Saving your order…':'Place order · Continue to UPI payment'} <ChevronRight size={18}/></button><p className="notice">Your order is saved first. After placing it, scan the QR and submit payment proof through WhatsApp.</p></form></section></div>}
+    {checkout&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckout(false)}}><section className="checkout-modal"><div className="drawer-head"><div><span className="eyebrow">ALMOST THERE</span><h2>Delivery details</h2></div><button className="icon-button" onClick={()=>setCheckout(false)}><X/></button></div><form onSubmit={submitOrder}><label>Full name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Mobile number<input required inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit phone number"/></label><label>Delivery address<textarea required value={address} onChange={e=>setAddress(e.target.value)} placeholder="House, street, area, landmark"/></label><label>Delivery note (optional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any directions for delivery"/></label><div className="payment-method-picker"><span className="eyebrow">PAYMENT METHOD</span><label className={'payment-method-option '+(paymentMethod==='upi_qr'?'selected':'')}><input type="radio" name="paymentMethod" value="upi_qr" checked={paymentMethod==='upi_qr'} onChange={()=>setPaymentMethod('upi_qr')}/><span><b>Pay by UPI QR</b><small>Scan QR and share payment screenshot on WhatsApp</small></span></label><label className={'payment-method-option '+(paymentMethod==='cash_on_delivery'?'selected':'')}><input type="radio" name="paymentMethod" value="cash_on_delivery" checked={paymentMethod==='cash_on_delivery'} onChange={()=>setPaymentMethod('cash_on_delivery')}/><span><b>Cash on Delivery (COD)</b><small>Pay cash when your order is delivered</small></span></label></div><div className="bill-line bill-total"><span>{paymentMethod==='cash_on_delivery'?'Cash due on delivery':'Pay by UPI QR after placing order'}</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" type="submit" disabled={placingOrder}>{placingOrder?'Saving your order…':paymentMethod==='cash_on_delivery'?'Place COD order':'Place order · Continue to UPI payment'} <ChevronRight size={18}/></button><p className="notice">{paymentMethod==='cash_on_delivery'?'Pay the delivery person when your groceries arrive.':'Your order is saved first. After placing it, scan the QR and submit payment proof through WhatsApp.'}</p></form></section></div>}
     {toast&&<div className="toast">{toast}</div>}
   </div>
 }
