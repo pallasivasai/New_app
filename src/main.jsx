@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Search, ShoppingBasket, MapPin, Plus, Minus, Trash2, Clock3, Bike, Leaf, ChevronRight, PackageCheck, X } from 'lucide-react'
 import './styles.css'
+import { supabase } from './lib/supabase'
 
 const products = [
   {id:1,name:'Tomatoes',unit:'500 g',price:28,old:35,category:'Vegetables',emoji:'🍅'},
@@ -22,6 +23,8 @@ const money = n => `₹${Number(n).toFixed(0)}`
 
 function App(){
   const [cart,setCart] = useState({})
+  const [catalog,setCatalog] = useState(products)
+  const [dbConnected,setDbConnected] = useState(false)
   const [category,setCategory] = useState('All')
   const [search,setSearch] = useState('')
   const [showCart,setShowCart] = useState(false)
@@ -37,17 +40,27 @@ function App(){
   const [shopName,setShopName] = useState('Local Basket')
   const [whatsapp,setWhatsapp] = useState('')
   const count = Object.values(cart).reduce((a,b)=>a+b,0)
-  const subtotal = products.reduce((sum,p)=>sum+p.price*(cart[p.id]||0),0)
-  const filtered = useMemo(()=>products.filter(p=>(category==='All'||p.category===category)&&p.name.toLowerCase().includes(search.toLowerCase())),[category,search])
+  const subtotal = catalog.reduce((sum,p)=>sum+p.price*(cart[p.id]||0),0)
+  const filtered = useMemo(()=>catalog.filter(p=>(category==='All'||p.category===category)&&p.name.toLowerCase().includes(search.toLowerCase())),[catalog,category,search])
   const notify = msg => { setToast(msg); setTimeout(()=>setToast(''),2500) }
   const add = id => setCart(c=>({...c,[id]:(c[id]||0)+1}))
   const change = (id,delta) => setCart(c=>{const n=(c[id]||0)+delta;const next={...c};if(n<=0)delete next[id];else next[id]=n;return next})
   useEffect(()=>{ if('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register('/sw.js').catch(()=>{}) },[])
+  useEffect(()=>{
+    let alive = true
+    supabase.from('products').select('id,name,unit,price,mrp,category,emoji,stock_qty').eq('is_active',true).order('id')
+      .then(({data,error})=>{
+        if(!alive) return
+        if(error){ console.warn('Products DB not available yet:',error.message); return }
+        if(data?.length){ setCatalog(data.map(p=>({...p,price:Number(p.price),old:Number(p.mrp),stockQty:p.stock_qty}))); setDbConnected(true) }
+      })
+    return ()=>{alive=false}
+  },[])
   const submitOrder = e => {
     e.preventDefault()
     if(!name.trim()||phone.replace(/\D/g,'').length<10||!address.trim()){notify('Please enter your name, valid phone and delivery address.');return}
-    const newOrder={id:'LB'+Date.now().toString().slice(-6),name,phone,address,notes,items:products.filter(p=>cart[p.id]).map(p=>({...p,qty:cart[p.id]})),subtotal,deliveryFee,total:subtotal+deliveryFee,status:'Order received',createdAt:new Date().toLocaleString()}
-    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify('Order created on this device.')
+    const newOrder={id:'LB'+Date.now().toString().slice(-6),name,phone,address,notes,items:catalog.filter(p=>cart[p.id]).map(p=>({...p,qty:cart[p.id]})),subtotal,deliveryFee,total:subtotal+deliveryFee,status:'Order received',createdAt:new Date().toLocaleString()}
+    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify('Demo order summary created. Database order submission is being configured.')
     try { localStorage.setItem('localBasketLastOrder',JSON.stringify(newOrder)); } catch {}
   }
   const shareOrder = () => {
@@ -71,11 +84,11 @@ function App(){
         </section>
         <section className="search-row"><div className="searchbox"><Search size={20}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search for milk, fruits, vegetables..."/></div><div className="delivery-chip"><Clock3 size={16}/> Delivery timing confirmed after order</div></section>
         <section className="categories"><div className="section-heading"><div><span className="eyebrow">SHOP BY CATEGORY</span><h2>What do you need today?</h2></div></div><div className="category-list">{categories.map((c,i)=><button key={c} onClick={()=>setCategory(c)} className={`category-pill ${category===c?'active':''}`}><span>{['🛒','🥦','🍎','🥛','🍞','🌾','🧃'][i]}</span>{c}</button>)}</div></section>
-        <section className="products-section"><div className="section-heading"><div><span className="eyebrow">LOCAL FAVOURITES</span><h2>{category==='All'?'Popular near you':category}</h2></div><span className="muted">{filtered.length} items</span></div><div className="product-grid">{filtered.map(p=><article className="product-card" key={p.id}><div className="product-image"><span className="discount">{Math.round((1-p.price/p.old)*100)}% OFF</span><span className="product-emoji">{p.emoji}</span></div><div className="product-info"><span className="product-unit">{p.unit}</span><h3>{p.name}</h3><div className="price-row"><div><b>{money(p.price)}</b><del>{money(p.old)}</del></div>{cart[p.id]?<div className="quantity"><button onClick={()=>change(p.id,-1)} aria-label="Decrease"><Minus size={14}/></button><b>{cart[p.id]}</b><button onClick={()=>add(p.id)} aria-label="Increase"><Plus size={14}/></button></div>:<button className="add-button" onClick={()=>add(p.id)}><Plus size={15}/> ADD</button>}</div></div></article>)}</div>{filtered.length===0&&<div className="empty">No products found. Try another search.</div>}</section>
+        <section className="products-section"><div className="section-heading"><div><span className="eyebrow">LOCAL FAVOURITES</span><h2>{category==='All'?'Popular near you':category}</h2></div><span className={`db-status ${dbConnected?'connected':''}`}><i/>{dbConnected?'Live stock':'Demo catalogue'}</span></div><div className="product-grid">{filtered.map(p=><article className="product-card" key={p.id}><div className="product-image"><span className="discount">{Math.round((1-p.price/p.old)*100)}% OFF</span><span className="product-emoji">{p.emoji}</span></div><div className="product-info"><span className="product-unit">{p.unit}</span><h3>{p.name}</h3><div className="price-row"><div><b>{money(p.price)}</b><del>{money(p.old)}</del></div>{cart[p.id]?<div className="quantity"><button onClick={()=>change(p.id,-1)} aria-label="Decrease"><Minus size={14}/></button><b>{cart[p.id]}</b><button onClick={()=>add(p.id)} aria-label="Increase"><Plus size={14}/></button></div>:<button className="add-button" onClick={()=>add(p.id)}><Plus size={15}/> ADD</button>}</div></div></article>)}</div>{filtered.length===0&&<div className="empty">No products found. Try another search.</div>}</section>
         <section className="trust-row"><div><span>🌱</span><b>Local-first</b><small>Supporting nearby stores</small></div><div><span>🧺</span><b>Everyday value</b><small>Clear product pricing</small></div><div><span>🤝</span><b>Personal service</b><small>Local delivery support</small></div></section>
       </>}
       {order&&<section className="order-success"><div className="success-icon"><PackageCheck size={40}/></div><span className="eyebrow">ORDER SUMMARY</span><h1>Thanks, {order.name.split(' ')[0]}!</h1><p>Your demo order <b>{order.id}</b> has been prepared on this device.</p><div className="order-card"><div className="order-status"><span className="status-dot"></span>{order.status}<small>{order.createdAt}</small></div>{order.items.map(i=><div className="order-line" key={i.id}><span>{i.emoji} {i.name} × {i.qty}</span><b>{money(i.price*i.qty)}</b></div>)}<div className="order-line"><span>Delivery fee</span><b>{money(order.deliveryFee)}</b></div><div className="order-total"><span>Total</span><b>{money(order.total)}</b></div><p className="address-line"><MapPin size={15}/>{order.address}</p></div><button className="primary-button" onClick={shareOrder}>Share order summary <ChevronRight size={18}/></button><button className="text-button" onClick={()=>{setOrder(null);setCategory('All')}}>Continue shopping</button><p className="notice">Demo only: this order is not sent to a live store or database.</p></section>}
-      {admin&&<section className="admin-page"><button className="text-button" onClick={()=>setAdmin(false)}>← Back to store</button><span className="eyebrow">STORE SETTINGS</span><h1>Owner setup</h1><p className="muted">These settings are stored only in this browser. Add a real backend before accepting live orders.</p><label>Store name<input value={shopName} onChange={e=>setShopName(e.target.value)}/></label><label>WhatsApp number with country code (optional)<input value={whatsapp} onChange={e=>setWhatsapp(e.target.value)} placeholder="91XXXXXXXXXX"/></label><label>Delivery fee (₹)<input type="number" min="0" value={deliveryFee} onChange={e=>setDeliveryFee(Math.max(0,Number(e.target.value)||0))}/></label><h2>Products preview</h2><div className="admin-products">{products.map(p=><div key={p.id}><span>{p.emoji} {p.name}</span><b>{money(p.price)}</b></div>)}</div><p className="notice">This starter admin screen is local-only; it does not sync changes across customers.</p></section>}
+      {admin&&<section className="admin-page"><button className="text-button" onClick={()=>setAdmin(false)}>← Back to store</button><span className="eyebrow">STORE SETTINGS</span><h1>Owner setup</h1><p className="muted">These settings are stored only in this browser. Add a real backend before accepting live orders.</p><label>Store name<input value={shopName} onChange={e=>setShopName(e.target.value)}/></label><label>WhatsApp number with country code (optional)<input value={whatsapp} onChange={e=>setWhatsapp(e.target.value)} placeholder="91XXXXXXXXXX"/></label><label>Delivery fee (₹)<input type="number" min="0" value={deliveryFee} onChange={e=>setDeliveryFee(Math.max(0,Number(e.target.value)||0))}/></label><h2>Products preview</h2><div className="admin-products">{catalog.map(p=><div key={p.id}><span>{p.emoji} {p.name}</span><b>{money(p.price)}</b></div>)}</div><p className="notice">This starter admin screen is local-only; it does not sync changes across customers.</p></section>}
     </main>
     <footer><div className="footer-brand">🛍️ {shopName}</div><span>Made for your neighbourhood.</span><button onClick={()=>setAdmin(true)}>Owner setup</button></footer>
     {showCart&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowCart(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">YOUR BASKET</span><h2>Shopping cart ({count})</h2></div><button className="icon-button" onClick={()=>setShowCart(false)}><X/></button></div>{count===0?<div className="empty-cart"><span>🧺</span><h3>Your basket is empty</h3><p>Add something fresh to get started.</p><button className="primary-button" onClick={()=>setShowCart(false)}>Browse products</button></div>:<><div className="cart-items">{products.filter(p=>cart[p.id]).map(p=><div className="cart-item" key={p.id}><div className="mini-product">{p.emoji}</div><div className="cart-item-main"><b>{p.name}</b><small>{p.unit} · {money(p.price)}</small><div className="quantity"><button onClick={()=>change(p.id,-1)}><Minus size={13}/></button><b>{cart[p.id]}</b><button onClick={()=>add(p.id)}><Plus size={13}/></button></div></div><strong>{money(p.price*cart[p.id])}</strong><button className="remove-button" onClick={()=>setCart(c=>{const n={...c};delete n[p.id];return n})}><Trash2 size={15}/></button></div>)}</div><div className="cart-bottom"><div className="bill-line"><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="bill-line"><span>Delivery fee</span><b>{money(deliveryFee)}</b></div><div className="bill-line bill-total"><span>Total</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" onClick={()=>{setShowCart(false);setCheckout(true)}}>Proceed to checkout <ChevronRight size={18}/></button><small className="muted">Payments are not enabled in this demo.</small></div></>}</aside></div>}
