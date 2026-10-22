@@ -16,3 +16,21 @@
 .primary-button:disabled{opacity:.65;cursor:wait}
 .order-success .order-card{box-shadow:0 12px 35px #244a2a0a}
 @media(max-width:760px){.checkout-modal{border-radius:0}.db-status{font-size:9px;padding:7px 9px}}
+
+/* Local Basket QR payment and order tracking */
+.payment-panel{margin:24px auto 18px;padding:24px;background:#fff;border:1px solid #e1eadf;border-radius:20px;text-align:left;box-shadow:0 12px 32px #1c4b2710}
+.payment-panel h2{font:800 24px Manrope,sans-serif;margin:10px 0;color:#193b29;text-align:center}
+.payment-panel>p{text-align:center;color:#728174;font-size:13px;line-height:1.6}
+.upi-qr{display:block;width:min(100%,320px);height:auto;aspect-ratio:1;object-fit:contain;background:#080808;border:8px solid #080808;border-radius:12px;margin:20px auto}
+.payment-instructions{background:#f1f7ef;border-radius:14px;padding:16px;color:#395943;font-size:12px;line-height:1.7}
+.payment-instructions ol{padding-left:20px;margin-bottom:0}
+.payment-instructions li{padding:3px 0}
+.secondary-button{display:flex;align-items:center;justify-content:center;margin:12px auto;border:1px solid #dbe7d8;background:#fff;color:#28734a;border-radius:12px;padding:12px 18px;font-weight:800;font-size:12px}
+.tracking-panel{margin-top:18px;padding:16px;border:1px solid #d9ead5;background:#f7fbf5;border-radius:14px}
+.tracking-panel h3{display:flex;align-items:center;gap:8px;font:800 16px Manrope,sans-serif;margin:0 0 8px;color:#226d43}
+.tracking-status{font-size:12px!important;font-weight:800;color:#936315!important;text-align:left!important}
+.tracking-steps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px;margin:16px 0}
+.tracking-steps span{border-top:3px solid #dce6da;padding-top:7px;color:#8a978b;font-size:9px;line-height:1.4}
+.tracking-steps span.active{border-color:#3a9a5b;color:#246f46;font-weight:800}
+.tracking-panel small{color:#849185;font-size:10px;line-height:1.5}
+@media(max-width:760px){.payment-panel{padding:17px}.payment-panel h2{font-size:21px}.upi-qr{width:min(100%,290px)}.tracking-steps{grid-template-columns:1fr;gap:8px}.tracking-steps span{border-top:0;border-left:3px solid #dce6da;padding:3px 0 3px 9px;font-size:11px}.tracking-steps span.active{border-left-color:#3a9a5b}}
