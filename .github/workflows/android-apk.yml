@@ -11,6 +11,7 @@ on:
       - 'package.json'
       - 'vite.config.js'
       - 'capacitor.config.json'
+      - 'supabase/functions/**'
       - '.github/workflows/android-apk.yml'
 
 jobs:
