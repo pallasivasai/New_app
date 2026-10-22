@@ -1,0 +1,9 @@
+{
+  "appId": "com.localbasket.grocery",
+  "appName": "Local Basket",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
