@@ -25,6 +25,7 @@ function App(){
   const [cart,setCart] = useState({})
   const [catalog,setCatalog] = useState(products)
   const [dbConnected,setDbConnected] = useState(false)
+  const [placingOrder,setPlacingOrder] = useState(false)
   const [category,setCategory] = useState('All')
   const [search,setSearch] = useState('')
   const [showCart,setShowCart] = useState(false)
@@ -56,11 +57,31 @@ function App(){
       })
     return ()=>{alive=false}
   },[])
-  const submitOrder = e => {
+  const submitOrder = async e => {
     e.preventDefault()
     if(!name.trim()||phone.replace(/\D/g,'').length<10||!address.trim()){notify('Please enter your name, valid phone and delivery address.');return}
-    const newOrder={id:'LB'+Date.now().toString().slice(-6),name,phone,address,notes,items:catalog.filter(p=>cart[p.id]).map(p=>({...p,qty:cart[p.id]})),subtotal,deliveryFee,total:subtotal+deliveryFee,status:'Order received',createdAt:new Date().toLocaleString()}
-    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify('Demo order summary created. Database order submission is being configured.')
+    if(!dbConnected){notify('Database is not reachable yet. Please retry in a moment.');return}
+    const items = catalog.filter(p=>cart[p.id]).map(p=>({product_id:Number(p.id),quantity:cart[p.id]}))
+    if(!items.length){notify('Your cart is empty.');return}
+    setPlacingOrder(true)
+    const {data,error} = await supabase.functions.invoke('create-order',{body:{
+      customer_name:name,customer_phone:phone,delivery_address:address,delivery_notes:notes,
+      delivery_fee:deliveryFee,items
+    }})
+    setPlacingOrder(false)
+    if(error||data?.error){
+      notify(data?.error || error?.message || 'Could not place order. Please try again.')
+      return
+    }
+    const dbOrder=data.order
+    const newOrder={
+      id:dbOrder.order_number,name:dbOrder.customer_name,phone:dbOrder.customer_phone,
+      address:dbOrder.delivery_address,notes:dbOrder.delivery_notes,
+      items:(data.items||[]).map(i=>({id:i.product_id,name:i.product_name,unit:i.unit,price:Number(i.unit_price),qty:i.quantity,emoji:catalog.find(p=>Number(p.id)===Number(i.product_id))?.emoji||'🛒'})),
+      subtotal:Number(dbOrder.subtotal),deliveryFee:Number(dbOrder.delivery_fee),total:Number(dbOrder.total),
+      status:'Order saved to database',paymentStatus:dbOrder.payment_status,createdAt:new Date(dbOrder.created_at).toLocaleString()
+    }
+    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify('Order placed and saved to the live database!')
     try { localStorage.setItem('localBasketLastOrder',JSON.stringify(newOrder)); } catch {}
   }
   const shareOrder = () => {
@@ -92,7 +113,7 @@ function App(){
     </main>
     <footer><div className="footer-brand">🛍️ {shopName}</div><span>Made for your neighbourhood.</span><button onClick={()=>setAdmin(true)}>Owner setup</button></footer>
     {showCart&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowCart(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">YOUR BASKET</span><h2>Shopping cart ({count})</h2></div><button className="icon-button" onClick={()=>setShowCart(false)}><X/></button></div>{count===0?<div className="empty-cart"><span>🧺</span><h3>Your basket is empty</h3><p>Add something fresh to get started.</p><button className="primary-button" onClick={()=>setShowCart(false)}>Browse products</button></div>:<><div className="cart-items">{products.filter(p=>cart[p.id]).map(p=><div className="cart-item" key={p.id}><div className="mini-product">{p.emoji}</div><div className="cart-item-main"><b>{p.name}</b><small>{p.unit} · {money(p.price)}</small><div className="quantity"><button onClick={()=>change(p.id,-1)}><Minus size={13}/></button><b>{cart[p.id]}</b><button onClick={()=>add(p.id)}><Plus size={13}/></button></div></div><strong>{money(p.price*cart[p.id])}</strong><button className="remove-button" onClick={()=>setCart(c=>{const n={...c};delete n[p.id];return n})}><Trash2 size={15}/></button></div>)}</div><div className="cart-bottom"><div className="bill-line"><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="bill-line"><span>Delivery fee</span><b>{money(deliveryFee)}</b></div><div className="bill-line bill-total"><span>Total</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" onClick={()=>{setShowCart(false);setCheckout(true)}}>Proceed to checkout <ChevronRight size={18}/></button><small className="muted">Payments are not enabled in this demo.</small></div></>}</aside></div>}
-    {checkout&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckout(false)}}><section className="checkout-modal"><div className="drawer-head"><div><span className="eyebrow">ALMOST THERE</span><h2>Delivery details</h2></div><button className="icon-button" onClick={()=>setCheckout(false)}><X/></button></div><form onSubmit={submitOrder}><label>Full name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Mobile number<input required inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit phone number"/></label><label>Delivery address<textarea required value={address} onChange={e=>setAddress(e.target.value)} placeholder="House, street, area, landmark"/></label><label>Delivery note (optional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any directions for delivery"/></label><div className="bill-line bill-total"><span>Pay on delivery (demo)</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" type="submit">Place demo order <ChevronRight size={18}/></button><p className="notice">This prototype does not send the order to a shop. Do not enter sensitive information.</p></form></section></div>}
+    {checkout&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckout(false)}}><section className="checkout-modal"><div className="drawer-head"><div><span className="eyebrow">ALMOST THERE</span><h2>Delivery details</h2></div><button className="icon-button" onClick={()=>setCheckout(false)}><X/></button></div><form onSubmit={submitOrder}><label>Full name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Mobile number<input required inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit phone number"/></label><label>Delivery address<textarea required value={address} onChange={e=>setAddress(e.target.value)} placeholder="House, street, area, landmark"/></label><label>Delivery note (optional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any directions for delivery"/></label><div className="bill-line bill-total"><span>Pay on delivery (demo)</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" type="submit" disabled={placingOrder}>{placingOrder?'Saving your order…':'Place order · Cash on delivery'} <ChevronRight size={18}/></button><p className="notice">Your order will be saved to the live store database. Online payment is not enabled yet.</p></form></section></div>}
     {toast&&<div className="toast">{toast}</div>}
   </div>
 }
