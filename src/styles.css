@@ -34,3 +34,12 @@
 .tracking-steps span.active{border-color:#3a9a5b;color:#246f46;font-weight:800}
 .tracking-panel small{color:#849185;font-size:10px;line-height:1.5}
 @media(max-width:760px){.payment-panel{padding:17px}.payment-panel h2{font-size:21px}.upi-qr{width:min(100%,290px)}.tracking-steps{grid-template-columns:1fr;gap:8px}.tracking-steps span{border-top:0;border-left:3px solid #dce6da;padding:3px 0 3px 9px;font-size:11px}.tracking-steps span.active{border-left-color:#3a9a5b}}
+
+.payment-method-picker{display:grid;gap:10px;margin:18px 0}
+.payment-method-picker>.eyebrow{margin-bottom:2px}
+.payment-method-option{display:flex;align-items:flex-start;gap:11px;padding:14px;border:1px solid #dfe8dc;border-radius:14px;background:#fff;cursor:pointer}
+.payment-method-option.selected{border-color:#368751;background:#f1f8ef;box-shadow:0 0 0 1px #36875120}
+.payment-method-option input{accent-color:#287746;margin-top:3px;width:16px;height:16px;flex-shrink:0}
+.payment-method-option span{display:grid;gap:4px}
+.payment-method-option b{font-size:13px;color:#244631}
+.payment-method-option small{font-size:11px;color:#7b897c;line-height:1.5}
