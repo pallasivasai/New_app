@@ -1,0 +1,86 @@
+import React, { useEffect, useMemo, useState } from 'react'
+import { createRoot } from 'react-dom/client'
+import { Search, ShoppingBasket, MapPin, Plus, Minus, Trash2, Clock3, Bike, Leaf, ChevronRight, PackageCheck, X } from 'lucide-react'
+import './styles.css'
+
+const products = [
+  {id:1,name:'Tomatoes',unit:'500 g',price:28,old:35,category:'Vegetables',emoji:'🍅'},
+  {id:2,name:'Potatoes',unit:'1 kg',price:34,old:42,category:'Vegetables',emoji:'🥔'},
+  {id:3,name:'Onions',unit:'1 kg',price:39,old:48,category:'Vegetables',emoji:'🧅'},
+  {id:4,name:'Bananas',unit:'6 pieces',price:42,old:50,category:'Fruits',emoji:'🍌'},
+  {id:5,name:'Apples',unit:'4 pieces',price:99,old:120,category:'Fruits',emoji:'🍎'},
+  {id:6,name:'Fresh Milk',unit:'500 ml',price:35,old:42,category:'Dairy',emoji:'🥛'},
+  {id:7,name:'Brown Bread',unit:'400 g',price:45,old:50,category:'Bakery',emoji:'🍞'},
+  {id:8,name:'Eggs',unit:'6 pieces',price:48,old:55,category:'Dairy',emoji:'🥚'},
+  {id:9,name:'Basmati Rice',unit:'1 kg',price:89,old:110,category:'Staples',emoji:'🍚'},
+  {id:10,name:'Cooking Oil',unit:'1 L',price:145,old:165,category:'Staples',emoji:'🫒'},
+  {id:11,name:'Spinach',unit:'1 bunch',price:25,old:30,category:'Vegetables',emoji:'🥬'},
+  {id:12,name:'Orange Juice',unit:'1 L',price:110,old:130,category:'Beverages',emoji:'🧃'}
+]
+const categories = ['All','Vegetables','Fruits','Dairy','Bakery','Staples','Beverages']
+const money = n => `₹${Number(n).toFixed(0)}`
+
+function App(){
+  const [cart,setCart] = useState({})
+  const [category,setCategory] = useState('All')
+  const [search,setSearch] = useState('')
+  const [showCart,setShowCart] = useState(false)
+  const [checkout,setCheckout] = useState(false)
+  const [name,setName] = useState('')
+  const [phone,setPhone] = useState('')
+  const [address,setAddress] = useState('')
+  const [notes,setNotes] = useState('')
+  const [order,setOrder] = useState(null)
+  const [toast,setToast] = useState('')
+  const [admin,setAdmin] = useState(false)
+  const [deliveryFee,setDeliveryFee] = useState(20)
+  const [shopName,setShopName] = useState('Local Basket')
+  const [whatsapp,setWhatsapp] = useState('')
+  const count = Object.values(cart).reduce((a,b)=>a+b,0)
+  const subtotal = products.reduce((sum,p)=>sum+p.price*(cart[p.id]||0),0)
+  const filtered = useMemo(()=>products.filter(p=>(category==='All'||p.category===category)&&p.name.toLowerCase().includes(search.toLowerCase())),[category,search])
+  const notify = msg => { setToast(msg); setTimeout(()=>setToast(''),2500) }
+  const add = id => setCart(c=>({...c,[id]:(c[id]||0)+1}))
+  const change = (id,delta) => setCart(c=>{const n=(c[id]||0)+delta;const next={...c};if(n<=0)delete next[id];else next[id]=n;return next})
+  useEffect(()=>{ if('serviceWorker' in navigator && import.meta.env.PROD) navigator.serviceWorker.register('/sw.js').catch(()=>{}) },[])
+  const submitOrder = e => {
+    e.preventDefault()
+    if(!name.trim()||phone.replace(/\D/g,'').length<10||!address.trim()){notify('Please enter your name, valid phone and delivery address.');return}
+    const newOrder={id:'LB'+Date.now().toString().slice(-6),name,phone,address,notes,items:products.filter(p=>cart[p.id]).map(p=>({...p,qty:cart[p.id]})),subtotal,deliveryFee,total:subtotal+deliveryFee,status:'Order received',createdAt:new Date().toLocaleString()}
+    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify('Order created on this device.')
+    try { localStorage.setItem('localBasketLastOrder',JSON.stringify(newOrder)); } catch {}
+  }
+  const shareOrder = () => {
+    if(!order)return
+    const text=`${shopName} order ${order.id}\n${order.items.map(i=>`${i.name} x${i.qty} - ${money(i.price*i.qty)}`).join('\n')}\nTotal: ${money(order.total)}\nCustomer: ${order.name}, ${order.phone}\nAddress: ${order.address}`
+    if(whatsapp.trim()) window.open(`https://wa.me/${whatsapp.replace(/\D/g,'')}?text=${encodeURIComponent(text)}`,'_blank')
+    else if(navigator.share) navigator.share({title:'Grocery order '+order.id,text}).catch(()=>{})
+    else {navigator.clipboard?.writeText(text);notify('Order summary copied if clipboard is available.')}
+  }
+  return <div className="app-shell">
+    <header className="topbar">
+      <a className="brand" href="#" onClick={e=>{e.preventDefault();setAdmin(false)}}><span className="brand-icon">🛍️</span><span>{shopName}<small>FRESH • LOCAL • FAST</small></span></a>
+      <button className="location" onClick={()=>notify('Delivery area: configure your local service area in the admin panel.')}><MapPin size={16}/><span>Deliver to <b>Your location</b></span><ChevronRight size={15}/></button>
+      <button className="cart-button" onClick={()=>setShowCart(true)}><ShoppingBasket size={19}/><span>Cart</span>{count>0&&<b className="cart-count">{count}</b>}</button>
+    </header>
+    <main>
+      {!admin&&!order&&<>
+        <section className="hero">
+          <div className="hero-copy"><span className="eyebrow"><Leaf size={14}/> YOUR NEIGHBOURHOOD STORE</span><h1>Everyday essentials.<br/><em>Right to your door.</em></h1><p>Fresh picks from local shops, delivered with care.</p><div className="hero-points"><span><Clock3 size={16}/> Quick local delivery</span><span><Bike size={17}/> Local delivery</span></div></div>
+          <div className="hero-art"><div className="sun"></div><span className="fruit f1">🍊</span><span className="fruit f2">🥑</span><span className="fruit f3">🍅</span><span className="fruit f4">🥦</span><span className="basket-art">🧺</span><div className="hero-tag">Fresh every day</div></div>
+        </section>
+        <section className="search-row"><div className="searchbox"><Search size={20}/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search for milk, fruits, vegetables..."/></div><div className="delivery-chip"><Clock3 size={16}/> Delivery timing confirmed after order</div></section>
+        <section className="categories"><div className="section-heading"><div><span className="eyebrow">SHOP BY CATEGORY</span><h2>What do you need today?</h2></div></div><div className="category-list">{categories.map((c,i)=><button key={c} onClick={()=>setCategory(c)} className={`category-pill ${category===c?'active':''}`}><span>{['🛒','🥦','🍎','🥛','🍞','🌾','🧃'][i]}</span>{c}</button>)}</div></section>
+        <section className="products-section"><div className="section-heading"><div><span className="eyebrow">LOCAL FAVOURITES</span><h2>{category==='All'?'Popular near you':category}</h2></div><span className="muted">{filtered.length} items</span></div><div className="product-grid">{filtered.map(p=><article className="product-card" key={p.id}><div className="product-image"><span className="discount">{Math.round((1-p.price/p.old)*100)}% OFF</span><span className="product-emoji">{p.emoji}</span></div><div className="product-info"><span className="product-unit">{p.unit}</span><h3>{p.name}</h3><div className="price-row"><div><b>{money(p.price)}</b><del>{money(p.old)}</del></div>{cart[p.id]?<div className="quantity"><button onClick={()=>change(p.id,-1)} aria-label="Decrease"><Minus size={14}/></button><b>{cart[p.id]}</b><button onClick={()=>add(p.id)} aria-label="Increase"><Plus size={14}/></button></div>:<button className="add-button" onClick={()=>add(p.id)}><Plus size={15}/> ADD</button>}</div></div></article>)}</div>{filtered.length===0&&<div className="empty">No products found. Try another search.</div>}</section>
+        <section className="trust-row"><div><span>🌱</span><b>Local-first</b><small>Supporting nearby stores</small></div><div><span>🧺</span><b>Everyday value</b><small>Clear product pricing</small></div><div><span>🤝</span><b>Personal service</b><small>Local delivery support</small></div></section>
+      </>}
+      {order&&<section className="order-success"><div className="success-icon"><PackageCheck size={40}/></div><span className="eyebrow">ORDER SUMMARY</span><h1>Thanks, {order.name.split(' ')[0]}!</h1><p>Your demo order <b>{order.id}</b> has been prepared on this device.</p><div className="order-card"><div className="order-status"><span className="status-dot"></span>{order.status}<small>{order.createdAt}</small></div>{order.items.map(i=><div className="order-line" key={i.id}><span>{i.emoji} {i.name} × {i.qty}</span><b>{money(i.price*i.qty)}</b></div>)}<div className="order-line"><span>Delivery fee</span><b>{money(order.deliveryFee)}</b></div><div className="order-total"><span>Total</span><b>{money(order.total)}</b></div><p className="address-line"><MapPin size={15}/>{order.address}</p></div><button className="primary-button" onClick={shareOrder}>Share order summary <ChevronRight size={18}/></button><button className="text-button" onClick={()=>{setOrder(null);setCategory('All')}}>Continue shopping</button><p className="notice">Demo only: this order is not sent to a live store or database.</p></section>}
+      {admin&&<section className="admin-page"><button className="text-button" onClick={()=>setAdmin(false)}>← Back to store</button><span className="eyebrow">STORE SETTINGS</span><h1>Owner setup</h1><p className="muted">These settings are stored only in this browser. Add a real backend before accepting live orders.</p><label>Store name<input value={shopName} onChange={e=>setShopName(e.target.value)}/></label><label>WhatsApp number with country code (optional)<input value={whatsapp} onChange={e=>setWhatsapp(e.target.value)} placeholder="91XXXXXXXXXX"/></label><label>Delivery fee (₹)<input type="number" min="0" value={deliveryFee} onChange={e=>setDeliveryFee(Math.max(0,Number(e.target.value)||0))}/></label><h2>Products preview</h2><div className="admin-products">{products.map(p=><div key={p.id}><span>{p.emoji} {p.name}</span><b>{money(p.price)}</b></div>)}</div><p className="notice">This starter admin screen is local-only; it does not sync changes across customers.</p></section>}
+    </main>
+    <footer><div className="footer-brand">🛍️ {shopName}</div><span>Made for your neighbourhood.</span><button onClick={()=>setAdmin(true)}>Owner setup</button></footer>
+    {showCart&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowCart(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">YOUR BASKET</span><h2>Shopping cart ({count})</h2></div><button className="icon-button" onClick={()=>setShowCart(false)}><X/></button></div>{count===0?<div className="empty-cart"><span>🧺</span><h3>Your basket is empty</h3><p>Add something fresh to get started.</p><button className="primary-button" onClick={()=>setShowCart(false)}>Browse products</button></div>:<><div className="cart-items">{products.filter(p=>cart[p.id]).map(p=><div className="cart-item" key={p.id}><div className="mini-product">{p.emoji}</div><div className="cart-item-main"><b>{p.name}</b><small>{p.unit} · {money(p.price)}</small><div className="quantity"><button onClick={()=>change(p.id,-1)}><Minus size={13}/></button><b>{cart[p.id]}</b><button onClick={()=>add(p.id)}><Plus size={13}/></button></div></div><strong>{money(p.price*cart[p.id])}</strong><button className="remove-button" onClick={()=>setCart(c=>{const n={...c};delete n[p.id];return n})}><Trash2 size={15}/></button></div>)}</div><div className="cart-bottom"><div className="bill-line"><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="bill-line"><span>Delivery fee</span><b>{money(deliveryFee)}</b></div><div className="bill-line bill-total"><span>Total</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" onClick={()=>{setShowCart(false);setCheckout(true)}}>Proceed to checkout <ChevronRight size={18}/></button><small className="muted">Payments are not enabled in this demo.</small></div></>}</aside></div>}
+    {checkout&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckout(false)}}><section className="checkout-modal"><div className="drawer-head"><div><span className="eyebrow">ALMOST THERE</span><h2>Delivery details</h2></div><button className="icon-button" onClick={()=>setCheckout(false)}><X/></button></div><form onSubmit={submitOrder}><label>Full name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Mobile number<input required inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit phone number"/></label><label>Delivery address<textarea required value={address} onChange={e=>setAddress(e.target.value)} placeholder="House, street, area, landmark"/></label><label>Delivery note (optional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any directions for delivery"/></label><div className="bill-line bill-total"><span>Pay on delivery (demo)</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" type="submit">Place demo order <ChevronRight size={18}/></button><p className="notice">This prototype does not send the order to a shop. Do not enter sensitive information.</p></form></section></div>}
+    {toast&&<div className="toast">{toast}</div>}
+  </div>
+}
+createRoot(document.getElementById('root')).render(<App />)
