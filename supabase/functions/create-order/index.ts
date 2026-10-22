@@ -18,6 +18,7 @@ Deno.serve(async (req: Request) => {
     const delivery_address = String(body.delivery_address ?? "").trim().slice(0, 500);
     const delivery_notes = String(body.delivery_notes ?? "").trim().slice(0, 500);
     const delivery_fee = Math.max(0, Math.min(Number(body.delivery_fee ?? 20), 200));
+    const payment_method = body.payment_method === "cash_on_delivery" ? "cash_on_delivery" : "upi_qr";
     const items = Array.isArray(body.items) ? body.items : [];
     if (customer_name.length < 2 || customer_phone.length !== 10 || delivery_address.length < 8 || items.length < 1 || items.length > 40) {
       return new Response(JSON.stringify({ error: "Please provide valid customer details and cart items." }), { status: 400, headers: cors });
@@ -48,9 +49,10 @@ Deno.serve(async (req: Request) => {
     subtotal = Math.round(subtotal * 100) / 100;
     const total = Math.round((subtotal + delivery_fee) * 100) / 100;
     const { data: order, error: orderError } = await db.from("orders").insert({
-      customer_name, customer_phone, delivery_address, delivery_notes, subtotal, delivery_fee, total,
-      payment_status: "cash_on_delivery", status: "pending"
-    }).select("id,order_number,customer_name,customer_phone,delivery_address,delivery_notes,subtotal,delivery_fee,total,status,payment_status,created_at").single();
+      customer_name, customer_phone, phone: customer_phone, delivery_address, delivery_notes, subtotal, delivery_fee, total, total_amount: total,
+      payment_method, payment_provider: payment_method === "cash_on_delivery" ? "cash_on_delivery" : "manual_upi",
+      payment_status: payment_method === "cash_on_delivery" ? "cash_on_delivery" : "pending", status: "pending"
+    }).select("id,order_number,customer_name,customer_phone,delivery_address,delivery_notes,subtotal,delivery_fee,total,status,payment_method,payment_status,created_at").single();
     if (orderError) throw orderError;
     const rows = orderItems.map(i => ({ ...i, order_id: order.id }));
     const { error: itemsError } = await db.from("order_items").insert(rows);
