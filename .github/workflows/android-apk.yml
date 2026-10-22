@@ -16,6 +16,8 @@ on:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -48,3 +50,20 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish public APK download on GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Local Basket Android App (Latest)
+          body: |
+            Free Android APK for Local Basket.
+            
+            Download Local-Basket.apk below, install it on an Android phone, and allow installation from your browser/files app if prompted.
+            
+            This is a debug APK for testing. Payment verification is manual; do not treat a customer click or screenshot as verified payment.
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          name: Local-Basket.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
