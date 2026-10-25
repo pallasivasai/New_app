@@ -5,7 +5,7 @@ This integration uses the hosted checkout API from the public [YouPI-PG reposito
 ## What is implemented
 
 - The customer creates a Local Basket order in public.orders and public.order_items.
-- The app invokes the create-youpi-payment Supabase Edge Function.
+- The app invokes the `create-order` Supabase Edge Function. That server-side function validates the cart against live product/stock data, saves the order, creates the hosted YouPI payment session, and returns the checkout URL.
 - The function verifies the order ID and customer phone, checks the server-side order total, then asks YouPI to create a hosted session. The merchant secret stays on the server.
 - The customer is redirected to the returned checkoutUrl.
 - YouPI sends a signed webhook to youpi-webhook. The function verifies HMAC-SHA256 over the raw request body (or the gateway V2 timestamped signature), checks timestamp, delivery ID, order ID, amount, currency, and saved payment ID, then updates orders.payment_status and inserts a payment_events audit record.
@@ -14,7 +14,7 @@ This integration uses the hosted checkout API from the public [YouPI-PG reposito
 
 ## Required Supabase Edge Function secrets
 
-In Supabase Dashboard → Project Settings → Edge Functions → Secrets, add these secrets. **Do not put secret values in this file, frontend environment variables, or a public GitHub repository.**
+In Supabase Dashboard → Project Settings → Edge Functions → Secrets, add these secrets. `YOUPI_API_URL`, `YOUPI_MERCHANT_ID`, `YOUPI_MERCHANT_KEY`, and `YOUPI_WEBHOOK_SECRET` are required to enable UPI. `LOCAL_BASKET_PUBLIC_URL` is optional. **Do not put secret values in this file, frontend environment variables, or a public GitHub repository.**
 
 | Secret | Purpose |
 | --- | --- |
@@ -23,7 +23,7 @@ In Supabase Dashboard → Project Settings → Edge Functions → Secrets, add t
 | YOUPI_MERCHANT_ID | Merchant UUID configured in your YouPI deployment |
 | YOUPI_MERCHANT_KEY | Merchant API credential accepted as X-Merchant-Key |
 | YOUPI_WEBHOOK_SECRET | Same merchant webhook secret registered in YouPI for signed event delivery |
-| LOCAL_BASKET_RETURN_URL | HTTPS Local Basket site URL, e.g. https://new-app-psi-six.vercel.app/ |
+| LOCAL_BASKET_PUBLIC_URL | HTTPS Local Basket site origin used to build the return URL (defaults to https://new-app-psi-six.vercel.app) |
 
 Supabase supplies SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Edge Functions. Never copy the service-role key into the browser.
 
