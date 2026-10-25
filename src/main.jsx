@@ -118,26 +118,6 @@ function App(){
     else if(navigator.share) navigator.share({title:'Grocery order '+order.id,text}).catch(()=>{})
     else {navigator.clipboard?.writeText(text);notify('Order summary copied if clipboard is available.')}
   }
-  const submitPaymentDone = async () => {
-    if(!order || submittingPayment) return
-    const wa = window.open('about:blank','_blank')
-    setSubmittingPayment(true)
-    const {data,error} = await supabase.functions.invoke('submit-payment',{body:{
-      order_id:order.dbId, order_number:order.id, customer_phone:order.phone
-    }})
-    setSubmittingPayment(false)
-    if(error || data?.error){
-      if(wa) wa.close()
-      notify(data?.error || error?.message || 'Could not update payment status. Please retry.')
-      return
-    }
-    setOrder(o=>o?({...o,paymentStatus:data.payment_status || 'pending_verification'}):o)
-    notify('Payment marked as submitted. Owner verification is pending.')
-    const message = `Local Basket payment screenshot\\nOrder: ${order.id}\\nAmount: ${money(order.total)}\\nCustomer: ${order.name}\\nPhone: ${order.phone}\\nI have made the payment. Please verify it in your bank/UPI app. I will attach my payment screenshot here.\\n\\nThis message is not proof of payment; please verify the bank credit.`
-    const url = `https://wa.me/${PAYMENT_WHATSAPP}?text=${encodeURIComponent(message)}`
-    if(wa) wa.location.href=url
-    else window.open(url,'_blank')
-  }
   return <div className="app-shell">
     <header className="topbar">
       <a className="brand" href="#" onClick={e=>{e.preventDefault();setAdmin(false)}}><span className="brand-icon">🛍️</span><span>{shopName}<small>FRESH • LOCAL • FAST</small></span></a>
