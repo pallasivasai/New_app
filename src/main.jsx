@@ -78,18 +78,30 @@ function App(){
   },[order?.dbId,order?.phone,order?.paymentMethod,order?.paymentProvider,order?.paymentStatus])
   const submitOrder = async e => {
     e.preventDefault()
-    if(!name.trim()||phone.replace(/\D/g,'').length<10||!address.trim()){notify('Please enter your name, valid phone and delivery address.');return}
+    const normalizedPhone=phone.replace(/\D/g,'')
+    if(name.trim().length<2){notify('Please enter your full name.');return}
+    if(normalizedPhone.length!==10){notify('Enter a valid 10-digit Indian mobile number.');return}
+    if(address.trim().length<8){notify('Please enter a complete delivery address (at least 8 characters).');return}
     if(!dbConnected){notify('Database is not reachable yet. Please retry in a moment.');return}
     const items = catalog.filter(p=>cart[p.id]).map(p=>({product_id:Number(p.id),quantity:cart[p.id]}))
     if(!items.length){notify('Your cart is empty.');return}
     setPlacingOrder(true)
     const {data,error} = await supabase.functions.invoke('create-order',{body:{
-      customer_name:name,customer_phone:phone,delivery_address:address,delivery_notes:notes,
+      customer_name:name.trim(),customer_phone:normalizedPhone,delivery_address:address.trim(),delivery_notes:notes.trim(),
       payment_method:paymentMethod,delivery_fee:deliveryFee,items
     }})
     setPlacingOrder(false)
     if(error||data?.error){
-      notify(data?.error || error?.message || 'Could not place order. Please try again.')
+      let message=data?.error || ''
+      // Read the server response body from Supabase FunctionsHttpError when available.
+      if(!message && error?.context){
+        try{
+          const response=error.context
+          const body=typeof response.json==='function' ? await response.json() : null
+          message=body?.error || body?.message || ''
+        }catch{}
+      }
+      notify(message || error?.message || 'Could not place order. Please check your details and try again.')
       return
     }
     const dbOrder=data.order
