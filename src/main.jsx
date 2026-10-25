@@ -29,6 +29,7 @@ function App(){
   const [dbConnected,setDbConnected] = useState(false)
   const [placingOrder,setPlacingOrder] = useState(false)
   const [submittingPayment,setSubmittingPayment] = useState(false)
+  const [creatingGatewayPayment,setCreatingGatewayPayment] = useState(false)
   const [category,setCategory] = useState('All')
   const [search,setSearch] = useState('')
   const [showCart,setShowCart] = useState(false)
@@ -38,7 +39,7 @@ function App(){
   const [address,setAddress] = useState('')
   const [notes,setNotes] = useState('')
   const [paymentMethod,setPaymentMethod] = useState('upi_qr')
-  const [order,setOrder] = useState(null)
+  const [order,setOrder] = useState(()=>{ try { const saved=localStorage.getItem('localBasketLastOrder'); return saved?JSON.parse(saved):null } catch { return null } })
   const [toast,setToast] = useState('')
   const [admin,setAdmin] = useState(false)
   const [deliveryFee,setDeliveryFee] = useState(20)
@@ -61,6 +62,23 @@ function App(){
       })
     return ()=>{alive=false}
   },[])
+  useEffect(()=>{
+    if(!order?.dbId || !order?.phone || order.paymentMethod==='cash_on_delivery' || order.paymentProvider!=='youpi_pg' || order.paymentStatus==='paid') return
+    let alive=true
+    const checkStatus=async()=>{
+      const {data,error}=await supabase.functions.invoke('check-youpi-payment',{body:{order_id:order.dbId,customer_phone:order.phone}})
+      if(!alive||error||data?.error||!data?.payment_status) return
+      setOrder(current=>{
+        if(!current||current.dbId!==order.dbId) return current
+        const next={...current,paymentStatus:data.payment_status,paymentProvider:data.payment_provider||current.paymentProvider}
+        try{localStorage.setItem('localBasketLastOrder',JSON.stringify(next))}catch{}
+        return next
+      })
+    }
+    checkStatus()
+    const timer=setInterval(checkStatus,5000)
+    return ()=>{alive=false;clearInterval(timer)}
+  },[order?.dbId,order?.phone,order?.paymentMethod,order?.paymentProvider,order?.paymentStatus])
   const submitOrder = async e => {
     e.preventDefault()
     if(!name.trim()||phone.replace(/\D/g,'').length<10||!address.trim()){notify('Please enter your name, valid phone and delivery address.');return}
@@ -85,8 +103,19 @@ function App(){
       subtotal:Number(dbOrder.subtotal),deliveryFee:Number(dbOrder.delivery_fee),total:Number(dbOrder.total),
       status:'Order received',paymentMethod:dbOrder.payment_method || paymentMethod,paymentStatus:dbOrder.payment_status,createdAt:new Date(dbOrder.created_at).toLocaleString()
     }
-    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify(paymentMethod==='cash_on_delivery'?'COD order placed successfully!':'Order saved! Please complete your UPI payment.')
+    setOrder(newOrder);setCart({});setCheckout(false);setShowCart(false);notify(paymentMethod==='cash_on_delivery'?'COD order placed successfully!':'Order saved. Start secure hosted checkout to pay by UPI.')
     try { localStorage.setItem('localBasketLastOrder',JSON.stringify(newOrder)); } catch {}
+  }
+  const startYoupiCheckout = async () => {
+    if(!order || order.paymentMethod==='cash_on_delivery' || creatingGatewayPayment) return
+    setCreatingGatewayPayment(true)
+    const {data,error}=await supabase.functions.invoke('create-youpi-payment',{body:{order_id:order.dbId,customer_phone:order.phone}})
+    setCreatingGatewayPayment(false)
+    if(error || data?.error || !data?.checkoutUrl){notify(data?.error || error?.message || 'Could not start hosted UPI checkout. Please retry.');return}
+    const next={...order,paymentProvider:'youpi_pg',paymentReference:data.paymentId,paymentStatus:data.payment_status||'pending'}
+    setOrder(next)
+    try{localStorage.setItem('localBasketLastOrder',JSON.stringify(next))}catch{}
+    window.location.assign(data.checkoutUrl)
   }
   const shareOrder = () => {
     if(!order)return
@@ -138,42 +167,29 @@ function App(){
         <h1>Thanks, {order.name.split(' ')[0]}!</h1>
         <p>Your order <b>{order.id}</b> is saved in Local Basket.</p>
         <div className="order-card">
-          <div className="order-status"><span className="status-dot"></span>{order.paymentStatus==='pending_verification'?'Payment submitted — awaiting verification':order.paymentStatus==='paid'?'Payment verified':'Order received — payment pending'}<small>{order.createdAt}</small></div>
+          <div className="order-status"><span className="status-dot"></span>{order.paymentStatus==='paid'?'Payment verified':order.paymentProvider==='youpi_pg'?'Waiting for YouPI payment confirmation':'Order received — payment pending'}<small>{order.createdAt}</small></div>
           {order.items.map(i=><div className="order-line" key={i.id}><span>{i.emoji} {i.name} × {i.qty}</span><b>{money(i.price*i.qty)}</b></div>)}
           <div className="order-line"><span>Delivery fee</span><b>{money(order.deliveryFee)}</b></div>
           <div className="order-total"><span>Total to pay</span><b>{money(order.total)}</b></div>
           <p className="address-line"><MapPin size={15}/>{order.address}</p>
         </div>
-        {order.paymentMethod==='cash_on_delivery' ? <div className="payment-panel"><span className="eyebrow">CASH ON DELIVERY</span><h2>Pay when your order arrives</h2><p>Your order is confirmed as a COD request. Please pay ₹{Number(order.total).toFixed(0)} to the delivery person when your groceries arrive.</p><div className="tracking-panel"><h3><PackageCheck size={18}/> Order tracking</h3><p className="tracking-status">Order received · Cash payment due on delivery</p><div className="tracking-steps"><span className="active">Order received</span><span>Preparing</span><span>Out for delivery</span><span>Delivered</span></div><small>Delivery updates will be shown here as the store updates your order.</small></div></div> : order.paymentStatus!=='paid'&&<div className="payment-panel">
-          <span className="eyebrow">PAY USING UPI QR</span>
-          <h2>Scan & pay {money(order.total)}</h2>
-          <p>Open any UPI app and scan this QR. Enter the exact amount shown above.</p>
-          <img className="upi-qr" src={UPI_QR_DATA} alt="UPI payment QR code" />
-          <div className="payment-instructions">
-            <b>After you pay</b>
-            <ol>
-              <li>Tap <b>“I have done payment”</b> below.</li>
-              <li>WhatsApp will open a message to <b>{PAYMENT_WHATSAPP}</b>.</li>
-              <li>Attach your payment screenshot in that WhatsApp chat and send it.</li>
-              <li>Tracking will show that payment proof was submitted. Payment is confirmed only after the owner checks the bank/UPI transaction.</li>
-            </ol>
-          </div>
-          <button className="primary-button full" onClick={submitPaymentDone} disabled={submittingPayment}>{submittingPayment?'Updating order…':'I have done payment'} <ChevronRight size={18}/></button>
-          {order.paymentStatus==='pending_verification'&&<div className="tracking-panel">
-            <h3><PackageCheck size={18}/> Order tracking</h3>
-            <p className="tracking-status">Payment submitted · Waiting for owner verification</p>
-            <div className="tracking-steps"><span className="active">Order received</span><span className="active">Payment review</span><span>Preparing</span><span>Out for delivery</span><span>Delivered</span></div>
-            <small>Live delivery location is not enabled yet. The owner must verify payment and update the order status before fulfilment.</small>
-          </div>}
+        {order.paymentMethod==='cash_on_delivery' ? <div className="payment-panel"><span className="eyebrow">CASH ON DELIVERY</span><h2>Pay when your order arrives</h2><p>Your order is confirmed as a COD request. Please pay ₹{Number(order.total).toFixed(0)} to the delivery person when your groceries arrive.</p><div className="tracking-panel"><h3><PackageCheck size={18}/> Order tracking</h3><p className="tracking-status">Order received · Cash payment due on delivery</p><div className="tracking-steps"><span className="active">Order received</span><span>Preparing</span><span>Out for delivery</span><span>Delivered</span></div><small>Delivery updates will be shown here as the store updates your order.</small></div></div> : <div className="payment-panel">
+          <span className="eyebrow">SECURE UPI CHECKOUT</span>
+          <h2>{order.paymentStatus==='paid'?'Payment successful':`Pay ${money(order.total)} using YouPI`}</h2>
+          <p>{order.paymentStatus==='paid'?'Your payment was confirmed by the signed gateway webhook.':'Continue to YouPI hosted checkout to scan the dynamic QR or open your supported UPI app. Payment status updates automatically after server verification.'}</p>
+          {order.paymentStatus!=='paid'&&<button className="primary-button full" onClick={startYoupiCheckout} disabled={creatingGatewayPayment}>{creatingGatewayPayment?'Preparing secure checkout…':'Continue to secure UPI payment'} <ChevronRight size={18}/></button>}
+          {order.paymentStatus==='paid'&&<div className="tracking-panel"><h3><PackageCheck size={18}/> Payment verified</h3><p className="tracking-status">Payment confirmed by gateway</p><small>Local Basket received a verified server-side payment event. Keep your order number for reference.</small></div>}
+          {order.paymentStatus!=='paid'&&<div className="payment-instructions"><b>How payment confirmation works</b><ol><li>Tap “Continue to secure UPI payment”.</li><li>Complete the payment on the hosted YouPI checkout page.</li><li>Return to Local Basket. This order page checks payment status automatically.</li></ol><p className="muted">This order remains pending until the gateway's signed webhook confirms the exact order and amount. Screenshots and browser callbacks do not mark an order paid.</p></div>}
+          {order.paymentStatus!=='paid'&&<div className="tracking-panel"><h3><PackageCheck size={18}/> Order tracking</h3><p className="tracking-status">{order.paymentProvider==='youpi_pg'?'Payment initiated · Waiting for signed gateway confirmation':'Order received · Hosted checkout setup may be required'}</p><div className="tracking-steps"><span className="active">Order received</span><span>Payment confirmation</span><span>Preparing</span><span>Out for delivery</span><span>Delivered</span></div><small>Live delivery location is not enabled yet. The store should only prepare the order after payment is verified or COD is accepted.</small></div>}
         </div>}
         <button className="secondary-button" onClick={shareOrder}>Share order summary</button>
-        <button className="text-button" onClick={()=>{setOrder(null);setCategory('All')}}>Continue shopping</button>
+        <button className="text-button" onClick={()=>{setOrder(null);try{localStorage.removeItem('localBasketLastOrder')}catch{};setCategory('All')}}>Continue shopping</button>
       </section>}
       {admin&&<section className="admin-page"><button className="text-button" onClick={()=>setAdmin(false)}>← Back to store</button><span className="eyebrow">STORE SETTINGS</span><h1>Owner setup</h1><p className="muted">These settings are stored only in this browser. Add a real backend before accepting live orders.</p><label>Store name<input value={shopName} onChange={e=>setShopName(e.target.value)}/></label><label>WhatsApp number with country code (optional)<input value={whatsapp} onChange={e=>setWhatsapp(e.target.value)} placeholder="91XXXXXXXXXX"/></label><label>Delivery fee (₹)<input type="number" min="0" value={deliveryFee} onChange={e=>setDeliveryFee(Math.max(0,Number(e.target.value)||0))}/></label><h2>Products preview</h2><div className="admin-products">{catalog.map(p=><div key={p.id}><span>{p.emoji} {p.name}</span><b>{money(p.price)}</b></div>)}</div><p className="notice">This starter admin screen is local-only; it does not sync changes across customers.</p></section>}
     </main>
     <footer><div className="footer-brand">🛍️ {shopName}</div><span>Made for your neighbourhood.</span><button onClick={()=>setAdmin(true)}>Owner setup</button></footer>
     {showCart&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setShowCart(false)}}><aside className="cart-drawer"><div className="drawer-head"><div><span className="eyebrow">YOUR BASKET</span><h2>Shopping cart ({count})</h2></div><button className="icon-button" onClick={()=>setShowCart(false)}><X/></button></div>{count===0?<div className="empty-cart"><span>🧺</span><h3>Your basket is empty</h3><p>Add something fresh to get started.</p><button className="primary-button" onClick={()=>setShowCart(false)}>Browse products</button></div>:<><div className="cart-items">{catalog.filter(p=>cart[p.id]).map(p=><div className="cart-item" key={p.id}><div className="mini-product">{p.emoji}</div><div className="cart-item-main"><b>{p.name}</b><small>{p.unit} · {money(p.price)}</small><div className="quantity"><button onClick={()=>change(p.id,-1)}><Minus size={13}/></button><b>{cart[p.id]}</b><button onClick={()=>add(p.id)}><Plus size={13}/></button></div></div><strong>{money(p.price*cart[p.id])}</strong><button className="remove-button" onClick={()=>setCart(c=>{const n={...c};delete n[p.id];return n})}><Trash2 size={15}/></button></div>)}</div><div className="cart-bottom"><div className="bill-line"><span>Subtotal</span><b>{money(subtotal)}</b></div><div className="bill-line"><span>Delivery fee</span><b>{money(deliveryFee)}</b></div><div className="bill-line bill-total"><span>Total</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" onClick={()=>{setShowCart(false);setCheckout(true)}}>Proceed to checkout <ChevronRight size={18}/></button><small className="muted">UPI QR payment is available after order placement.</small></div></>}</aside></div>}
-    {checkout&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckout(false)}}><section className="checkout-modal"><div className="drawer-head"><div><span className="eyebrow">ALMOST THERE</span><h2>Delivery details</h2></div><button className="icon-button" onClick={()=>setCheckout(false)}><X/></button></div><form onSubmit={submitOrder}><label>Full name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Mobile number<input required inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit phone number"/></label><label>Delivery address<textarea required value={address} onChange={e=>setAddress(e.target.value)} placeholder="House, street, area, landmark"/></label><label>Delivery note (optional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any directions for delivery"/></label><div className="payment-method-picker"><span className="eyebrow">PAYMENT METHOD</span><label className={'payment-method-option '+(paymentMethod==='upi_qr'?'selected':'')}><input type="radio" name="paymentMethod" value="upi_qr" checked={paymentMethod==='upi_qr'} onChange={()=>setPaymentMethod('upi_qr')}/><span><b>Pay by UPI QR</b><small>Scan QR and share payment screenshot on WhatsApp</small></span></label><label className={'payment-method-option '+(paymentMethod==='cash_on_delivery'?'selected':'')}><input type="radio" name="paymentMethod" value="cash_on_delivery" checked={paymentMethod==='cash_on_delivery'} onChange={()=>setPaymentMethod('cash_on_delivery')}/><span><b>Cash on Delivery (COD)</b><small>Pay cash when your order is delivered</small></span></label></div><div className="bill-line bill-total"><span>{paymentMethod==='cash_on_delivery'?'Cash due on delivery':'Pay by UPI QR after placing order'}</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" type="submit" disabled={placingOrder}>{placingOrder?'Saving your order…':paymentMethod==='cash_on_delivery'?'Place COD order':'Place order · Continue to UPI payment'} <ChevronRight size={18}/></button><p className="notice">{paymentMethod==='cash_on_delivery'?'Pay the delivery person when your groceries arrive.':'Your order is saved first. After placing it, scan the QR and submit payment proof through WhatsApp.'}</p></form></section></div>}
+    {checkout&&<div className="overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setCheckout(false)}}><section className="checkout-modal"><div className="drawer-head"><div><span className="eyebrow">ALMOST THERE</span><h2>Delivery details</h2></div><button className="icon-button" onClick={()=>setCheckout(false)}><X/></button></div><form onSubmit={submitOrder}><label>Full name<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label><label>Mobile number<input required inputMode="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit phone number"/></label><label>Delivery address<textarea required value={address} onChange={e=>setAddress(e.target.value)} placeholder="House, street, area, landmark"/></label><label>Delivery note (optional)<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any directions for delivery"/></label><div className="payment-method-picker"><span className="eyebrow">PAYMENT METHOD</span><label className={'payment-method-option '+(paymentMethod==='upi_qr'?'selected':'')}><input type="radio" name="paymentMethod" value="upi_qr" checked={paymentMethod==='upi_qr'} onChange={()=>setPaymentMethod('upi_qr')}/><span><b>Pay by UPI via YouPI</b><small>Hosted checkout with server-side payment confirmation</small></span></label><label className={'payment-method-option '+(paymentMethod==='cash_on_delivery'?'selected':'')}><input type="radio" name="paymentMethod" value="cash_on_delivery" checked={paymentMethod==='cash_on_delivery'} onChange={()=>setPaymentMethod('cash_on_delivery')}/><span><b>Cash on Delivery (COD)</b><small>Pay cash when your order is delivered</small></span></label></div><div className="bill-line bill-total"><span>{paymentMethod==='cash_on_delivery'?'Cash due on delivery':'Pay by UPI QR after placing order'}</span><b>{money(subtotal+deliveryFee)}</b></div><button className="primary-button full" type="submit" disabled={placingOrder}>{placingOrder?'Saving your order…':paymentMethod==='cash_on_delivery'?'Place COD order':'Place order · Continue to UPI payment'} <ChevronRight size={18}/></button><p className="notice">{paymentMethod==='cash_on_delivery'?'Pay the delivery person when your groceries arrive.':'Your order is saved first. Continue to hosted YouPI checkout; payment is confirmed only by a signed webhook.'}</p></form></section></div>}
     {toast&&<div className="toast">{toast}</div>}
   </div>
 }
