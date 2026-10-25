@@ -103,6 +103,43 @@ Deno.serve(async (req: Request) => {
       console.error("YouPI webhook reconciliation rejected", { message: error.message, orderNumber, paymentId, eventType });
       return reply({ error: "Payment event did not match a valid Local Basket order." }, 409);
     }
+
+    // Send an owner email only after the signed webhook and database reconciliation
+    // have confirmed the exact order/payment/amount. Email is a notification, not proof of payment.
+    if (eventType === "SUCCESS" && data?.duplicate !== true && data?.result?.payment_status === "paid") {
+      const resendKey = Deno.env.get("RESEND_API_KEY");
+      const from = Deno.env.get("PAYMENT_CONFIRMATION_FROM");
+      const to = Deno.env.get("PAYMENT_CONFIRMATION_EMAIL") || "psairabel143@gmail.com";
+      if (resendKey && from) {
+        try {
+          const { data: paidOrder, error: orderLookupError } = await db.from("orders")
+            .select("order_number,customer_name,total,total_amount,payment_reference,payment_status")
+            .eq("order_number", orderNumber)
+            .maybeSingle();
+          if (orderLookupError) throw orderLookupError;
+          if (paidOrder?.payment_status === "paid" && paidOrder.payment_reference === paymentId) {
+            const amount = Number(paidOrder.total ?? paidOrder.total_amount);
+            const mail = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from,
+                to: [to],
+                subject: `Local Basket: payment confirmed for ${orderNumber}`,
+                html: `<h2>Payment verified</h2><p>Local Basket received a verified YouPI payment event.</p><p><b>Order:</b> ${orderNumber}</p><p><b>Customer:</b> ${String(paidOrder.customer_name ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c] ?? c))}</p><p><b>Amount:</b> ₹${amount.toFixed(2)}</p><p><b>Payment reference:</b> ${paymentId}</p><p>This email is a notification; confirm settlement against your bank records.</p>`
+              }),
+              signal: AbortSignal.timeout(10000)
+            });
+            if (!mail.ok) console.error("Payment verified but owner email failed", { status: mail.status, orderNumber });
+          }
+        } catch (mailError) {
+          // Never make the gateway retry a valid payment just because email delivery failed.
+          console.error("Payment verified; owner email notification failed", { orderNumber, error: String(mailError) });
+        }
+      } else {
+        console.warn("Payment verified; owner email skipped because RESEND_API_KEY or PAYMENT_CONFIRMATION_FROM is missing.");
+      }
+    }
     return reply({ received: true, result: data }, 200);
   } catch (error) {
     console.error("youpi-webhook error", error);
