@@ -6,7 +6,7 @@ This integration uses the hosted checkout API from the public [YouPI-PG reposito
 
 - The customer creates a Local Basket order in public.orders and public.order_items.
 - The app invokes the `create-order` Supabase Edge Function. That server-side function validates the cart against live product/stock data, saves the order, creates the hosted YouPI payment session, and returns the checkout URL.
-- The function verifies the order ID and customer phone, checks the server-side order total, then asks YouPI to create a hosted session. The merchant secret stays on the server.
+- The server recalculates the order total from database product prices/quantities and sends that exact INR amount to YouPI. The merchant secret stays on the server.
 - The customer is redirected to the returned checkoutUrl.
 - YouPI sends a signed webhook to youpi-webhook. The function verifies HMAC-SHA256 over the raw request body (or the gateway V2 timestamped signature), checks timestamp, delivery ID, order ID, amount, currency, and saved payment ID, then updates orders.payment_status and inserts a payment_events audit record.
 - The app polls check-youpi-payment, which only reads the Local Basket order status. It never marks a payment as paid from a browser event.
@@ -19,7 +19,6 @@ In Supabase Dashboard → Project Settings → Edge Functions → Secrets, add t
 | Secret | Purpose |
 | --- | --- |
 | YOUPI_API_URL | Public HTTPS base URL exposing POST /api/v1/payments |
-| YOUPI_CHECKOUT_URL | Public HTTPS checkout portal base URL; checkout path is /checkout/{paymentId} |
 | YOUPI_MERCHANT_ID | Merchant UUID configured in your YouPI deployment |
 | YOUPI_MERCHANT_KEY | Merchant API credential accepted as X-Merchant-Key |
 | YOUPI_WEBHOOK_SECRET | Same merchant webhook secret registered in YouPI for signed event delivery |
