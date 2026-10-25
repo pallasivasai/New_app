@@ -106,7 +106,7 @@ Deno.serve(async (req: Request) => {
 
     // Send an owner email only after the signed webhook and database reconciliation
     // have confirmed the exact order/payment/amount. Email is a notification, not proof of payment.
-    if (eventType === "SUCCESS" && data?.duplicate !== true && data?.result?.payment_status === "paid") {
+    if (eventType === "SUCCESS" && data?.duplicate !== true && data?.payment_status === "paid") {
       const resendKey = Deno.env.get("RESEND_API_KEY");
       const from = Deno.env.get("PAYMENT_CONFIRMATION_FROM");
       const to = Deno.env.get("PAYMENT_CONFIRMATION_EMAIL") || "psairabel143@gmail.com";
