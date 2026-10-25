@@ -64,6 +64,13 @@ Deno.serve(async (req: Request) => {
     let event: any;
     try { event = JSON.parse(rawBody); } catch { return reply({ error: "Invalid JSON payload." }, 400); }
 
+    // Header timestamps/IDs must agree with the values inside the signed body.
+    // This prevents an old valid payload from being replayed with a fresh header timestamp.
+    if (String(event.timestamp ?? "") !== timestampHeader ||
+        String(event.deliveryId ?? "") !== deliveryId) {
+      return reply({ error: "Webhook timestamp or delivery ID mismatch." }, 401);
+    }
+
     const eventType = String(event.event ?? req.headers.get("x-gateway-event") ?? "").toUpperCase();
     const orderNumber = String(event.orderId ?? "").trim();
     const paymentId = String(event.paymentId ?? "").trim();
