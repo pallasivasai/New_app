@@ -14,7 +14,7 @@ This integration uses the hosted checkout API from the public [YouPI-PG reposito
 
 ## Required Supabase Edge Function secrets
 
-In Supabase Dashboard → Project Settings → Edge Functions → Secrets, add these secrets. `YOUPI_API_URL`, `YOUPI_MERCHANT_ID`, `YOUPI_MERCHANT_KEY`, and `YOUPI_WEBHOOK_SECRET` are required to enable UPI. `LOCAL_BASKET_PUBLIC_URL` is optional. **Do not put secret values in this file, frontend environment variables, or a public GitHub repository.**
+In Supabase Dashboard → Project Settings → Edge Functions → Secrets, add these secrets. `YOUPI_API_URL`, `YOUPI_MERCHANT_ID`, `YOUPI_MERCHANT_KEY`, and `YOUPI_WEBHOOK_SECRET` are required to enable UPI. `LOCAL_BASKET_PUBLIC_URL` is optional. Owner email notifications additionally require `RESEND_API_KEY` and `PAYMENT_CONFIRMATION_FROM` (a sender verified in Resend); `PAYMENT_CONFIRMATION_EMAIL` defaults to `psairabel143@gmail.com`. **Do not put secret values in this file, frontend environment variables, or a public GitHub repository.**
 
 | Secret | Purpose |
 | --- | --- |
@@ -22,7 +22,7 @@ In Supabase Dashboard → Project Settings → Edge Functions → Secrets, add t
 | YOUPI_MERCHANT_ID | Merchant UUID configured in your YouPI deployment |
 | YOUPI_MERCHANT_KEY | Merchant API credential accepted as X-Merchant-Key |
 | YOUPI_WEBHOOK_SECRET | Same merchant webhook secret registered in YouPI for signed event delivery |
-| LOCAL_BASKET_PUBLIC_URL | HTTPS Local Basket site origin used to build the return URL (defaults to https://new-app-psi-six.vercel.app) |
+| LOCAL_BASKET_PUBLIC_URL | HTTPS Local Basket site origin used to build the return URL (defaults to https://new-app-psi-six.vercel.app) |\n| RESEND_API_KEY | Optional Resend API key for owner payment emails |\n| PAYMENT_CONFIRMATION_FROM | Optional verified sender address in Resend |\n| PAYMENT_CONFIRMATION_EMAIL | Optional owner notification recipient; defaults to psairabel143@gmail.com |
 
 Supabase supplies SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to Edge Functions. Never copy the service-role key into the browser.
 
@@ -40,6 +40,6 @@ Subscribe to SUCCESS, FAILED, EXPIRED, and CANCELLED. Copy the merchant's webhoo
 2. Ensure the YouPI merchant is configured with a valid receiving UPI account and webhook delivery is enabled.
 3. Add the secrets above, then test with a small amount and confirm the signed webhook reaches Supabase.
 4. Verify in Supabase that exactly the matching Local Basket order becomes paid, the amount matches to the paise, and a verified row is added to payment_events.
-5. Confirm retries are idempotent and failed, expired, and cancelled sessions remain unpaid.
+5. Confirm retries are idempotent and failed, expired, and cancelled sessions remain unpaid.\n6. For owner email alerts, verify a sender domain/address in Resend, then add `RESEND_API_KEY` and `PAYMENT_CONFIRMATION_FROM` as Edge Function secrets. Emails are sent only after the signed webhook verifies and reconciles a successful payment; email itself is not proof of settlement.
 
 Until the gateway URL, merchant credentials, receiving account, and webhook are configured, the checkout function intentionally returns a clear not-configured response rather than pretending to accept a payment.
